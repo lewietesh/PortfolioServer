@@ -1,0 +1,53 @@
+# Byte‑compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Django stuff:
+*.log
+local_settings.py         # if you keep per‑machine settings here
+db.sqlite3
+db.sqlite3-journal
+
+# Media and static files (if you collect them locally)
+media/
+staticfiles/
+
+# Environment variables / secrets
+.env
+.env.*                    # e.g. .env.local, .env.production
+credentials.json
+secret_key.txt
+
+# VS Code
+.vscode/
+
+# PyCharm
+.idea/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db

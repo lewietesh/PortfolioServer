@@ -51,3 +51,7 @@ secret_key.txt
 # Windows
 Thumbs.db
 ehthumbs.db
+
+
+#I should have added this for pdf
+.pdf

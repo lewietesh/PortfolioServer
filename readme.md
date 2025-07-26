@@ -33,3 +33,11 @@
 📋 Business Operations - Orders, testimonials, and communications
 
 Lets Go!
+
+Time to build the models
+
+Actually, lets write code for all the models, then we will jump into serializers and views, they depend primarily on the models anyway. 
+ 
+Time to work on serializers
+
+Wait in, for the next phase. 

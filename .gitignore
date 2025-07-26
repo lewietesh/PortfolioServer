@@ -35,6 +35,7 @@ staticfiles/
 
 # Environment variables / secrets
 .env
+.env.local
 .env.*                    # e.g. .env.local, .env.production
 credentials.json
 secret_key.txt

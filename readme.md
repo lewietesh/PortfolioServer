@@ -1,7 +1,6 @@
 # API Brief
   - Hello, world!
-  - My name is Lewis and, I am a full-stack developer.
- 
+
   - In this project, we are going to build a complete backend application of a freelance developer portfolio, using DJANGO REST API.
 
   - we will first transform a database design and use it as a foundation to create a fully functional API that is backing an actual business.
@@ -32,12 +31,3 @@
 📦 Digital Products - Ready-made websites, templates, and digital assets
 📋 Business Operations - Orders, testimonials, and communications
 
-Lets Go!
-
-Time to build the models
-
-Actually, lets write code for all the models, then we will jump into serializers and views, they depend primarily on the models anyway. 
- 
-Time to work on serializers
-
-Wait in, for the next phase. 

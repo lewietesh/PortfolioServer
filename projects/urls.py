@@ -1,6 +1,7 @@
 # projects/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+
 from . import views
 
 # Create router for ViewSets
@@ -32,6 +33,7 @@ urlpatterns = [
 # DELETE /api/v1/projects/technologies/{id}/         - Delete technology (admin only)
 # GET    /api/v1/projects/technologies/by_category/  - Get technologies by category (?category=frontend)
 # GET    /api/v1/projects/technologies/popular/      - Get popular technologies (public)
+
 
 # PROJECTS:
 # GET    /api/v1/projects/projects/                  - List projects (public: completed only, admin: all)

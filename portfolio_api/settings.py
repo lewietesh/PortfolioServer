@@ -11,7 +11,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # DEVELOPMENT MODE SETTINGS FOR ENV VARIABLES
 # # Initialize environment variables
 env = environ.Env()
-environ.Env.read_env(env_file=BASE_DIR / '.env.local') 
+environ.Env.read_env(env_file=BASE_DIR / '.env') 
 
 
 # SECURITY WARNING: keep the secret key used in production secret!

@@ -312,3 +312,21 @@ class ContactMessage(models.Model):
     
     def __str__(self):
         return f"Contact from {self.name} - {self.subject}"
+
+class Payment(models.Model):
+    id = models.CharField(max_length=36, primary_key=True, default=uuid.uuid4, editable=False)
+    order = models.ForeignKey('Order', on_delete=models.CASCADE, related_name='payments')
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=10, default='KSH')
+    method = models.CharField(max_length=50)
+    transaction_id = models.CharField(max_length=255)
+    status = models.CharField(max_length=20, default='pending')  # paid, failed, refunded
+    notes = models.TextField(blank=True)
+    date_created = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = 'payment'
+        ordering = ['-date_created']
+
+    def __str__(self):
+        return f"{self.order_id} - {self.status}"

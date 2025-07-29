@@ -18,7 +18,7 @@ urlpatterns = [
     path(f'api/{API_VERSION}/blog/', include('blog.urls')),
     path(f'api/{API_VERSION}/services/', include('services.urls')),
     path(f'api/{API_VERSION}/products/', include('products.urls')),
-    # path(f'api/{API_VERSION}/business/', include('business.urls')),
+    path(f'api/{API_VERSION}/business/', include('business.urls')),
 ]
 
 # Serve media files in development

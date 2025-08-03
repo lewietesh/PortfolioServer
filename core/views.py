@@ -41,7 +41,7 @@ class HeroSectionViewSet(viewsets.ModelViewSet):
         - Public read access for active hero
         - Admin write access for management
         """
-        if self.action in ['active_hero', 'retrieve']:
+        if self.action in ['active_hero', 'retrieve', 'hero_by_route']:
             return [permissions.AllowAny()]
         return [permissions.IsAdminUser()]
     
@@ -61,7 +61,7 @@ class HeroSectionViewSet(viewsets.ModelViewSet):
         Cached for performance
         """
         try:
-            active_hero = HeroSection.objects.get(is_active=True)
+            active_hero = HeroSection.objects.get(is_active=True, route_name='home')
             serializer = PublicHeroSectionSerializer(active_hero)
             return Response(serializer.data)
         except HeroSection.DoesNotExist:
@@ -69,23 +69,42 @@ class HeroSectionViewSet(viewsets.ModelViewSet):
                 {'detail': 'No active hero section found.'}, 
                 status=status.HTTP_404_NOT_FOUND
             )
+
+    @method_decorator(cache_page(60 * 15))  # Cache for 15 minutes
+    @action(detail=False, methods=['get'], url_path='by-route/(?P<route_name>[^/.]+)')
+    def hero_by_route(self, request, route_name=None):
+        """
+        Get the active hero section for a specific route
+        """
+        try:
+            hero = HeroSection.objects.get(is_active=True, route_name=route_name)
+            serializer = PublicHeroSectionSerializer(hero)
+            return Response(serializer.data)
+        except HeroSection.DoesNotExist:
+            return Response(
+                {'detail': f'No active hero section found for route: {route_name}'}, 
+                status=status.HTTP_404_NOT_FOUND
+            )
     
     @action(detail=True, methods=['post'])
     def activate(self, request, pk=None):
         """
-        Activate a specific hero section (deactivates others)
+        Activate a specific hero section (deactivates others in same route)
         """
         hero = self.get_object()
         
         with transaction.atomic():
-            # Deactivate all other hero sections
-            HeroSection.objects.filter(is_active=True).update(is_active=False)
+            # Deactivate other hero sections in the same route
+            HeroSection.objects.filter(
+                route_name=hero.route_name, 
+                is_active=True
+            ).exclude(pk=hero.pk).update(is_active=False)
             # Activate this one
             hero.is_active = True
             hero.save()
         
         return Response(
-            {'detail': f'Hero section "{hero.heading}" is now active.'}, 
+            {'detail': f'Hero section "{hero.heading}" is now active for route "{hero.route_name}".'}, 
             status=status.HTTP_200_OK
         )
     

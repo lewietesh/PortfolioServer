@@ -3,10 +3,11 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils import timezone
+from django.db import models
 from decimal import Decimal
 import re
 
-from .models import Order, Testimonial, ContactMessage, Payment, Notification
+from .models import Order, Testimonial, ContactMessage, Payment, Notification, NewsletterSubscriber
 from .utils import (
     generate_order_number, calculate_order_total, 
     validate_payment_method, send_order_confirmation_email
@@ -463,4 +464,86 @@ class OrderStatsSerializer(serializers.Serializer):
     total_revenue = serializers.DecimalField(max_digits=12, decimal_places=2)
     average_order_value = serializers.DecimalField(max_digits=12, decimal_places=2)
     top_services = serializers.ListField()
-    monthly_revenue = serializers.DictField()
+
+
+# Newsletter Serializers
+class NewsletterSubscriberSerializer(serializers.ModelSerializer):
+    """
+    Serializer for newsletter subscribers
+    """
+    
+    class Meta:
+        model = NewsletterSubscriber
+        fields = [
+            'id', 'email', 'name', 'status', 'source', 
+            'emails_sent', 'emails_opened', 'last_email_opened',
+            'date_subscribed', 'date_unsubscribed'
+        ]
+        read_only_fields = [
+            'id', 'emails_sent', 'emails_opened', 'last_email_opened',
+            'date_subscribed', 'date_unsubscribed'
+        ]
+
+
+class NewsletterSubscribeSerializer(serializers.ModelSerializer):
+    """
+    Serializer for newsletter subscription (public endpoint)
+    """
+    
+    class Meta:
+        model = NewsletterSubscriber
+        fields = ['email', 'name']
+    
+    def validate_email(self, value):
+        """Validate email and check for duplicates"""
+        if not value or not value.strip():
+            raise serializers.ValidationError("Email is required.")
+        
+        email = value.strip().lower()
+        
+        # Check if already subscribed and active
+        existing = NewsletterSubscriber.objects.filter(email=email).first()
+        if existing:
+            if existing.status == 'active':
+                raise serializers.ValidationError("This email is already subscribed to our newsletter.")
+            elif existing.status == 'unsubscribed':
+                # Reactivate the subscription
+                existing.reactivate()
+                return email
+        
+        return email
+    
+    def validate_name(self, value):
+        """Validate name field"""
+        if value and value.strip():
+            name = value.strip()
+            if len(name) < 2:
+                raise serializers.ValidationError("Name must be at least 2 characters long.")
+            if len(name) > 100:
+                raise serializers.ValidationError("Name must be less than 100 characters.")
+            return name.title()
+        return ""
+    
+    def create(self, validated_data):
+        """Create or reactivate newsletter subscriber"""
+        email = validated_data['email'].lower()
+        name = validated_data.get('name', '')
+        
+        # Check if subscriber already exists
+        existing = NewsletterSubscriber.objects.filter(email=email).first()
+        if existing:
+            # Update name and reactivate if necessary
+            existing.name = name
+            if existing.status != 'active':
+                existing.reactivate()
+            else:
+                existing.save()
+            return existing
+        
+        # Create new subscriber
+        return NewsletterSubscriber.objects.create(
+            email=email,
+            name=name,
+            status='active',
+            source='website'
+        )

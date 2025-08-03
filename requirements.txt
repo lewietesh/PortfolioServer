@@ -1,0 +1,66 @@
+# Django Portfolio API Requirements
+# Core Django Framework
+Django==5.2.2
+
+# Database
+mysqlclient==2.2.4
+
+# Django REST Framework
+djangorestframework==3.15.2
+djangorestframework-simplejwt==5.3.0
+django-filter==24.3
+
+# CORS handling for API
+django-cors-headers==4.4.0
+
+# Environment variables management
+django-environ==0.11.2
+
+# Admin interface enhancement
+django-jazzmin==3.0.1
+
+# Additional utilities for Django projects
+Pillow==10.4.0
+
+# Development and testing
+pytest==8.3.2
+pytest-django==4.8.0
+
+# Production server (optional)
+gunicorn==23.0.0
+
+# Security and utilities
+python-decouple==3.8
+
+# Additional packages that might be useful
+requests==2.32.3
+python-dotenv==1.0.1
+
+# For handling dates and times
+pytz==2024.1
+
+# For API documentation (optional but recommended)
+# drf-spectacular==0.27.2
+
+# For email functionality
+# django-ses==3.5.2
+
+# For caching (optional)
+# redis==5.0.8
+# django-redis==5.4.0
+
+# For file uploads and media handling
+# boto3==1.35.7
+# django-storages==1.14.4
+
+# For background tasks (optional)
+# celery==5.3.4
+# django-celery-beat==2.6.0
+
+# For API rate limiting (optional)
+# django-ratelimit==4.1.0
+
+# Code quality tools (development only)
+black==24.8.0
+flake8==7.1.1
+isort==5.13.2

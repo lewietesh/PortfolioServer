@@ -206,7 +206,7 @@ class ProjectTechnology(models.Model):
 
 class ProjectComment(models.Model):
     """
-    Public comments on portfolio projects
+    Public comments on portfolio projects with threading support
     """
     
     # Primary fields
@@ -222,6 +222,16 @@ class ProjectComment(models.Model):
         Project,
         on_delete=models.CASCADE,
         related_name='comments'
+    )
+    
+    # Threading support - allows replies to comments
+    parent_comment = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='replies',
+        help_text="Parent comment if this is a reply"
     )
     
     # Commenter information
@@ -244,8 +254,110 @@ class ProjectComment(models.Model):
         ordering = ['-date_created']
         indexes = [
             models.Index(fields=['project']),
+            models.Index(fields=['parent_comment']),
             models.Index(fields=['approved']),
         ]
     
     def __str__(self):
+        if self.parent_comment:
+            return f"Reply by {self.name} to comment on {self.project.title}"
         return f"Comment by {self.name} on {self.project.title}"
+    
+    @property
+    def is_reply(self):
+        """Check if this comment is a reply to another comment"""
+        return self.parent_comment is not None
+    
+    @property
+    def thread_level(self):
+        """Calculate the nesting level of this comment"""
+        level = 0
+        current = self.parent_comment
+        while current:
+            level += 1
+            current = current.parent_comment
+        return level
+    
+    def get_thread_root(self):
+        """Get the root comment of this thread"""
+        current = self
+        while current.parent_comment:
+            current = current.parent_comment
+        return current
+
+
+class ProjectReview(models.Model):
+    """
+    Client reviews/testimonials for completed projects
+    Similar to Testimonial but specific to projects
+    """
+    
+    # Primary fields
+    id = models.CharField(
+        max_length=36, 
+        primary_key=True, 
+        default=uuid.uuid4,
+        editable=False
+    )
+    
+    # Relationships
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name='reviews',
+        limit_choices_to={'status': 'completed'}
+    )
+    client = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='project_reviews',
+        limit_choices_to={'role': 'client'}
+    )
+    
+    # Content fields
+    content = models.TextField()
+    rating = models.IntegerField(
+        blank=True,
+        null=True,
+        help_text="Rating from 1-5"
+    )
+    
+    # Client display information (for cases where client wants to be named differently)
+    display_name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Optional: Override client name for display"
+    )
+    company_name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Client's company name"
+    )
+    
+    # Moderation fields
+    featured = models.BooleanField(default=False)
+    approved = models.BooleanField(default=False)
+    
+    # Timestamp
+    date_created = models.DateTimeField(default=timezone.now)
+    
+    class Meta:
+        db_table = 'project_review'
+        verbose_name = 'Project Review'
+        verbose_name_plural = 'Project Reviews'
+        ordering = ['-date_created']
+        indexes = [
+            models.Index(fields=['project']),
+            models.Index(fields=['client']),
+            models.Index(fields=['featured']),
+            models.Index(fields=['approved']),
+        ]
+    
+    def __str__(self):
+        client_name = self.display_name or self.client.get_full_name() or self.client.email
+        return f"Review by {client_name} for {self.project.title}"
+    
+    @property
+    def reviewer_name(self):
+        """Get the display name for the reviewer"""
+        return self.display_name or self.client.get_full_name() or self.client.email.split('@')[0]

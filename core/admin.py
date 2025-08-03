@@ -14,19 +14,20 @@ class HeroSectionAdmin(admin.ModelAdmin):
     
     list_display = [
         'heading', 
+        'route_name',
         'subheading_preview', 
         'is_active_display', 
         'has_cta',
         'date_created',
         'date_updated'
     ]
-    list_filter = ['is_active', 'date_created']
-    search_fields = ['heading', 'subheading']
+    list_filter = ['is_active', 'route_name', 'date_created']
+    search_fields = ['heading', 'subheading', 'route_name']
     readonly_fields = ['date_created', 'date_updated']
     
     fieldsets = (
         ('Content', {
-            'fields': ('heading', 'subheading')
+            'fields': ('heading', 'subheading', 'route_name')
         }),
         ('Call to Action', {
             'fields': ('cta_text', 'cta_link'),
@@ -68,7 +69,7 @@ class HeroSectionAdmin(admin.ModelAdmin):
     actions = ['activate_hero', 'deactivate_hero']
     
     def activate_hero(self, request, queryset):
-        """Custom action to activate selected hero (deactivates others)"""
+        """Custom action to activate selected hero (deactivates others in same route)"""
         if queryset.count() > 1:
             self.message_user(
                 request, 
@@ -77,14 +78,15 @@ class HeroSectionAdmin(admin.ModelAdmin):
             )
             return
         
-        # Deactivate all others
-        HeroSection.objects.update(is_active=False)
+        hero = queryset.first()
+        # Deactivate others in the same route
+        HeroSection.objects.filter(route_name=hero.route_name).update(is_active=False)
         # Activate selected
         queryset.update(is_active=True)
         
         self.message_user(
             request, 
-            f"Successfully activated hero section: {queryset.first().heading}"
+            f"Successfully activated hero section: {hero.heading} for route: {hero.route_name}"
         )
     activate_hero.short_description = "Activate selected hero section"
     
@@ -99,9 +101,9 @@ class HeroSectionAdmin(admin.ModelAdmin):
     
     def save_model(self, request, obj, form, change):
         """Override save to handle business logic"""
-        # If setting this as active, deactivate others
+        # If setting this as active, deactivate others in the same route
         if obj.is_active:
-            HeroSection.objects.exclude(pk=obj.pk).update(is_active=False)
+            HeroSection.objects.filter(route_name=obj.route_name).exclude(pk=obj.pk).update(is_active=False)
         super().save_model(request, obj, form, change)
 
 

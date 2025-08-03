@@ -16,12 +16,13 @@ User = get_user_model()
 
 
 from accounts.permissions import IsDeveloperOrAdmin, IsOwnerOrReadOnly, IsClientOwner
-from .models import Order, Testimonial, ContactMessage, Payment, Notification
+from .models import Order, Testimonial, ContactMessage, Payment, Notification, NewsletterSubscriber
 from .serializers import (
     OrderCreateSerializer, OrderListSerializer, OrderDetailSerializer,
     TestimonialCreateSerializer, TestimonialListSerializer,
     ContactMessageSerializer, PaymentSerializer, NotificationSerializer,
-    BulkOrderStatusUpdateSerializer, OrderStatsSerializer
+    BulkOrderStatusUpdateSerializer, OrderStatsSerializer,
+    NewsletterSubscriberSerializer, NewsletterSubscribeSerializer
 )
 from .utils import (
     generate_order_number, process_payment, create_notification,
@@ -562,4 +563,94 @@ class PaymentViewSet(viewsets.ModelViewSet):
         if user.role == 'client':
             return queryset.filter(order__client=user)
         return queryset
+
+
+class NewsletterSubscriberViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing newsletter subscribers
+    """
+    
+    queryset = NewsletterSubscriber.objects.all()
+    serializer_class = NewsletterSubscriberSerializer
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['status', 'source']
+    ordering_fields = ['date_subscribed', 'email']
+    ordering = ['-date_subscribed']
+    
+    def get_permissions(self):
+        """Set permissions based on action"""
+        if self.action in ['subscribe']:
+            return [permissions.AllowAny()]  # Allow public subscription
+        return [IsDeveloperOrAdmin()]  # Admin-only for management
+    
+    def get_serializer_class(self):
+        """Return appropriate serializer based on action"""
+        if self.action == 'subscribe':
+            return NewsletterSubscribeSerializer
+        return NewsletterSubscriberSerializer
+    
+    @action(detail=False, methods=['post'])
+    def subscribe(self, request):
+        """
+        Public endpoint for newsletter subscription
+        """
+        serializer = NewsletterSubscribeSerializer(data=request.data)
+        if serializer.is_valid():
+            subscriber = serializer.save()
+            
+            # You can add email confirmation logic here
+            # send_welcome_email(subscriber.email, subscriber.name)
+            
+            return Response(
+                {
+                    'detail': 'Successfully subscribed to newsletter!',
+                    'email': subscriber.email,
+                    'status': subscriber.status
+                },
+                status=status.HTTP_201_CREATED
+            )
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=True, methods=['post'])
+    def unsubscribe(self, request, pk=None):
+        """
+        Unsubscribe a user from newsletter
+        """
+        subscriber = self.get_object()
+        subscriber.unsubscribe()
+        
+        return Response(
+            {'detail': f'{subscriber.email} has been unsubscribed.'},
+            status=status.HTTP_200_OK
+        )
+    
+    @action(detail=True, methods=['post'])
+    def reactivate(self, request, pk=None):
+        """
+        Reactivate a subscriber
+        """
+        subscriber = self.get_object()
+        subscriber.reactivate()
+        
+        return Response(
+            {'detail': f'{subscriber.email} subscription has been reactivated.'},
+            status=status.HTTP_200_OK
+        )
+    
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """
+        Get newsletter statistics
+        """
+        total_subscribers = NewsletterSubscriber.objects.count()
+        active_subscribers = NewsletterSubscriber.objects.filter(status='active').count()
+        unsubscribed = NewsletterSubscriber.objects.filter(status='unsubscribed').count()
+        
+        return Response({
+            'total_subscribers': total_subscribers,
+            'active_subscribers': active_subscribers,
+            'unsubscribed': unsubscribed,
+            'subscription_rate': (active_subscribers / total_subscribers * 100) if total_subscribers > 0 else 0
+        })
         

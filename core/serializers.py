@@ -16,7 +16,8 @@ class HeroSectionSerializer(serializers.ModelSerializer):
             'heading', 
             'subheading', 
             'cta_text', 
-            'cta_link', 
+            'cta_link',
+            'route_name',
             'is_active',
             'date_created',
             'date_updated'
@@ -43,7 +44,7 @@ class HeroSectionListSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = HeroSection
-        fields = ['id', 'heading', 'is_active', 'date_created']
+        fields = ['id', 'heading', 'route_name', 'is_active', 'date_created']
 
 
 class AboutSectionSerializer(serializers.ModelSerializer):
@@ -137,7 +138,7 @@ class PublicHeroSectionSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = HeroSection
-        fields = ['heading', 'subheading', 'cta_text', 'cta_link']
+        fields = ['heading', 'subheading', 'cta_text', 'cta_link', 'route_name']
 
 
 class PublicAboutSectionSerializer(serializers.ModelSerializer):

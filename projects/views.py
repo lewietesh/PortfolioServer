@@ -7,6 +7,7 @@ from django.db import transaction
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
 from django.views.decorators.vary import vary_on_headers
+from django.views.decorators.csrf import csrf_exempt
 from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import Technology, Project, ProjectComment, ProjectGalleryImage
@@ -249,18 +250,44 @@ class ProjectViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK
         )
     
+    @method_decorator(csrf_exempt)
     @action(detail=True, methods=['post'])
     def add_comment(self, request, slug=None):
         """Add a comment to a project"""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"add_comment called with slug: {slug}")
+        logger.info(f"Request data: {request.data}")
+        logger.info(f"Request method: {request.method}")
+        
         project = self.get_object()
+        logger.info(f"Found project: {project.title}")
         
         serializer = ProjectCommentCreateSerializer(data=request.data)
         if serializer.is_valid():
+            # Validate parent comment belongs to this project if provided
+            parent_comment = None
+            if serializer.validated_data.get('parent_comment'):
+                try:
+                    parent_comment = ProjectComment.objects.get(
+                        id=serializer.validated_data['parent_comment'],
+                        project=project
+                    )
+                    logger.info(f"Found parent comment: {parent_comment.id}")
+                except ProjectComment.DoesNotExist:
+                    logger.error("Parent comment does not belong to this project")
+                    return Response(
+                        {'parent_comment': ['Parent comment does not belong to this project.']},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
             # Create comment (not approved by default)
             comment = serializer.save(
                 project=project,
-                approved=False  # Requires admin approval
+                approved=False,  # Requires admin approval
+                parent_comment=parent_comment.id if parent_comment else None
             )
+            logger.info(f"Created comment: {comment.id}")
             
             # Return the created comment
             response_serializer = ProjectCommentSerializer(comment)
@@ -272,7 +299,17 @@ class ProjectViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_201_CREATED
             )
         
+        logger.error(f"Serializer errors: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    @action(detail=False, methods=['get'])
+    def test_endpoint(self, request):
+        """Test endpoint to verify API is working"""
+        return Response({
+            'message': 'Projects API is working!',
+            'timestamp': timezone.now().isoformat(),
+            'user': str(request.user) if request.user.is_authenticated else 'Anonymous'
+        })
     
     @action(detail=False, methods=['get'])
     def stats(self, request):

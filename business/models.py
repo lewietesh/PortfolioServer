@@ -313,6 +313,91 @@ class ContactMessage(models.Model):
     def __str__(self):
         return f"Contact from {self.name} - {self.subject}"
 
+
+class NewsletterSubscriber(models.Model):
+    """
+    Newsletter subscribers for marketing and updates
+    """
+    
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('inactive', 'Inactive'),
+        ('unsubscribed', 'Unsubscribed'),
+    ]
+    
+    SOURCE_CHOICES = [
+        ('website', 'Website'),
+        ('social_media', 'Social Media'),
+        ('referral', 'Referral'),
+        ('manual', 'Manual'),
+    ]
+    
+    # Primary fields
+    id = models.CharField(
+        max_length=36, 
+        primary_key=True, 
+        default=uuid.uuid4,
+        editable=False
+    )
+    
+    # Contact information
+    email = models.EmailField(unique=True)
+    name = models.CharField(max_length=255, blank=True)
+    
+    # Subscription details
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='active'
+    )
+    source = models.CharField(
+        max_length=50,
+        choices=SOURCE_CHOICES,
+        default='website'
+    )
+    
+    # Tracking fields
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    user_agent = models.TextField(blank=True)
+    
+    # Engagement tracking
+    emails_sent = models.IntegerField(default=0)
+    emails_opened = models.IntegerField(default=0)
+    last_email_opened = models.DateTimeField(blank=True, null=True)
+    
+    # Timestamps
+    date_subscribed = models.DateTimeField(default=timezone.now)
+    date_unsubscribed = models.DateTimeField(blank=True, null=True)
+    date_updated = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'newsletter_subscriber'
+        verbose_name = 'Newsletter Subscriber'
+        verbose_name_plural = 'Newsletter Subscribers'
+        ordering = ['-date_subscribed']
+        indexes = [
+            models.Index(fields=['email']),
+            models.Index(fields=['status']),
+            models.Index(fields=['source']),
+            models.Index(fields=['date_subscribed']),
+        ]
+    
+    def __str__(self):
+        return f"{self.email} ({self.status})"
+    
+    def unsubscribe(self):
+        """Mark subscriber as unsubscribed"""
+        self.status = 'unsubscribed'
+        self.date_unsubscribed = timezone.now()
+        self.save()
+    
+    def reactivate(self):
+        """Reactivate unsubscribed subscriber"""
+        self.status = 'active'
+        self.date_unsubscribed = None
+        self.save()
+
+
 class Payment(models.Model):
     id = models.CharField(max_length=36, primary_key=True, default=uuid.uuid4, editable=False)
     order = models.ForeignKey('Order', on_delete=models.CASCADE, related_name='payments')

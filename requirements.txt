@@ -17,7 +17,7 @@ django-cors-headers==4.4.0
 django-environ==0.11.2
 
 # Admin interface enhancement
-django-jazzmin==3.0.1
+django-jazzmin==3.0.0
 
 # Additional utilities for Django projects
 Pillow==10.4.0
@@ -64,3 +64,6 @@ pytz==2024.1
 black==24.8.0
 flake8==7.1.1
 isort==5.13.2
+
+# Fix for pkg_resources deprecation warning in rest_framework_simplejwt
+setuptools<81.0.0

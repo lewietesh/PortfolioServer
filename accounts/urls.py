@@ -2,6 +2,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
+from .views import GoogleAuthView
 
 # Create router and register viewsets
 router = DefaultRouter()
@@ -10,9 +11,12 @@ router.register(r'users', views.UserViewSet, basename='user')
 router.register(r'clients', views.ClientProfileViewSet, basename='client')
 
 # URL patterns
+
 urlpatterns = [
     # Router URLs (includes all ViewSet endpoints)
     path('', include(router.urls)),
+    # Google OAuth endpoint
+    path('auth/social/google/', GoogleAuthView.as_view()),
 ]
 
 # Complete URL mapping for reference:

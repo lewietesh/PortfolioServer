@@ -13,6 +13,7 @@ urlpatterns = [
     
     # API v1 Endpoints
     path(f'api/{API_VERSION}/accounts/', include('accounts.urls')),
+    path(f'api/{API_VERSION}/accounts/', include('dj_rest_auth.urls')),
     path(f'api/{API_VERSION}/core/', include('core.urls')),
     path(f'api/{API_VERSION}/projects/', include('projects.urls')),
     path(f'api/{API_VERSION}/blog/', include('blog.urls')),

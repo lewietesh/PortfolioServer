@@ -1,0 +1,107 @@
+
+# Frontend Authentication Integration Instructions
+
+## 1. Registration (Email & Password)
+- Endpoint: `POST /api/v1/auth/register/`
+- Request Body:
+  ```json
+  {
+    "email": "user@example.com",
+    "password": "yourStrongPassword"
+  }
+  ```
+- Password must be validated on the frontend before sending:
+  - At least 8 characters
+  - Should include letters and numbers (recommended)
+  - Confirm password match before sending
+- On success, user receives a message to check their email for verification.
+
+### Password Validation Example (Frontend)
+```typescript
+function isValidPassword(password: string): boolean {
+  return password.length >= 8;
+}
+```
+
+## 2. Email Verification
+- Endpoint: `POST /api/v1/auth/verify-email/`
+- Request Body:
+  ```json
+  {
+    "key": "verification-code-from-email"
+  }
+  ```
+- On success, user is verified and can log in.
+
+## 3. Login
+- Endpoint: `POST /api/v1/auth/login/`
+- Request Body:
+  ```json
+  {
+    "email": "user@example.com",
+    "password": "yourStrongPassword"
+  }
+  ```
+- On success, response contains a JWT token:
+  ```json
+  {
+    "key": "jwt-authentication-token"
+  }
+  ```
+- Store token securely and send in `Authorization: Bearer <token>` header for authenticated requests.
+
+## 4. Google OAuth Signup/Login
+- Endpoint: `POST /api/v1/auth/social/google/`
+- Request Body:
+  ```json
+  {
+    "access_token": "google-oauth-access-token"
+  }
+  ```
+- Obtain access token from Google OAuth flow on frontend.
+- On success, response contains JWT token and welcome message.
+
+### Google Signup Setup (Frontend)
+1. Use Google API client (e.g., `@react-oauth/google` for React) to handle OAuth flow.
+2. After user authenticates, obtain the Google access token.
+3. Send the access token to `/api/v1/auth/social/google/`.
+4. On success, store the returned JWT token and show welcome message.
+
+## 5. Password Reset
+- Endpoint: `POST /api/v1/auth/password/reset/`
+- Request Body:
+  ```json
+  {
+    "email": "user@example.com"
+  }
+  ```
+- On success, user receives a password reset email.
+
+## Component & Type Recommendations (DRY Principle)
+- Create reusable components for:
+  - AuthForm (handles login, registration, password reset)
+  - PasswordInput (with validation)
+  - GoogleAuthButton (handles Google OAuth)
+  - VerificationCodeInput
+- Define minimal types for API requests/responses:
+  ```typescript
+  type AuthRequest = { email: string; password: string };
+  type AuthResponse = { key: string };
+  type VerificationRequest = { key: string };
+  type VerificationResponse = { detail: string };
+  type PasswordResetRequest = { email: string };
+  type PasswordResetResponse = { detail: string };
+  ```
+- Extend types only as needed for new features.
+
+## General Notes
+- All endpoints return JSON responses.
+- Handle error messages and status codes for robust UX.
+- Always confirm password match and validate password strength on the frontend before sending registration requests.
+- For Google OAuth, use official Google API client, then send access token to backend.
+- Email verification and password reset require user to check their email for a code or link.
+
+## References
+- [dj-rest-auth documentation](https://dj-rest-auth.readthedocs.io/en/latest/)
+- [django-allauth Google provider](https://django-allauth.readthedocs.io/en/latest/providers.html#google)
+- [dj-rest-auth social authentication](https://dj-rest-auth.readthedocs.io/en/latest/social_authentication.html)

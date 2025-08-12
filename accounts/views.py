@@ -11,8 +11,10 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework.views import APIView
+from social_django.utils import load_strategy, load_backend
+from social_core.backends.google import GoogleOAuth2
+from django.contrib.auth import login
 
 from .models import User, ClientProfile
 from .serializers import (
@@ -33,6 +35,109 @@ from .permissions import IsDeveloperOrAdmin, IsOwnerOrReadOnly
 
 @method_decorator(csrf_exempt, name='dispatch')
 class AuthViewSet(viewsets.ViewSet):
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def verify_later(self, request):
+        """
+        Allow user to skip email verification (for development or fallback).
+        POST /api/v1/accounts/auth/verify-later/
+        Requires Authorization header with access token from signup.
+        """
+        user = request.user
+        if not user or not user.is_authenticated:
+            return Response({'message': 'Authentication required.'}, status=status.HTTP_403_FORBIDDEN)
+        # Mark user as active, but not verified (could add a verified flag if needed)
+        user.is_active = True
+        user.save()
+        # Optionally clear any pending verification code
+        cache_key = f"email_verification_{user.email}"
+        cache.delete(cache_key)
+        print(f"[VERIFY LATER] User {user.email} skipped verification.")
+        return Response({'message': 'Verification skipped. You can verify your email later from your profile.'}, status=status.HTTP_200_OK)
+    @action(detail=False, methods=['post'])
+    def login(self, request):
+        """
+        Custom login endpoint: checks credentials only.
+        POST /api/v1/accounts/auth/login/
+        """
+        email = request.data.get('email')
+        password = request.data.get('password')
+        if not email or not password:
+            return Response({
+                'success': False,
+                'message': 'Email and password are required.'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': 'No account found for this email.'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        if not user.check_password(password):
+            return Response({
+                'success': False,
+                'message': 'Incorrect password.'
+            }, status=status.HTTP_401_UNAUTHORIZED)
+        # Issue JWT tokens
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = RefreshToken.for_user(user)
+        access = str(refresh.access_token)
+        user_data = UserBasicSerializer(user).data
+        return Response({
+            'success': True,
+            'access': access,
+            'refresh': str(refresh),
+            'user': user_data,
+            'message': 'Login successful.'
+        }, status=status.HTTP_200_OK)
+    @action(detail=False, methods=['post'])
+    def refresh(self, request):
+        """
+        Refresh JWT access token using refresh token, rotate and blacklist old refresh token.
+        POST /api/v1/accounts/auth/refresh/
+        """
+        from rest_framework_simplejwt.tokens import RefreshToken, TokenError
+        refresh_token = request.data.get('refresh')
+        if not refresh_token:
+            return Response({'error': 'Missing refresh token.'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            token = RefreshToken(refresh_token)
+            # Blacklist the old refresh token
+            try:
+                token.blacklist()
+            except TokenError:
+                pass  # Already blacklisted or not enabled
+            # Rotate: issue a new refresh token
+            new_refresh = RefreshToken.for_user(token.user)
+            access_token = str(new_refresh.access_token)
+            return Response({
+                'access': access_token,
+                'refresh': str(new_refresh)
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': 'Invalid refresh token', 'details': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def logout(self, request):
+        """
+        Log out user by blacklisting refresh token (if provided) and returning success.
+        POST /api/v1/accounts/auth/logout/
+        """
+        # Debug: Log incoming Authorization header and user authentication status
+        auth_header = request.META.get('HTTP_AUTHORIZATION', None)
+        print(f"[LOGOUT DEBUG] Authorization header: {auth_header}")
+        print(f"[LOGOUT DEBUG] User authenticated: {request.user.is_authenticated}, User: {request.user}")
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh_token = request.data.get('refresh')
+        if refresh_token:
+            try:
+                token = RefreshToken(refresh_token)
+                token.blacklist()
+            except Exception as e:
+                return Response({'error': 'Invalid refresh token', 'details': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        # Django logout (optional, for session-based auth)
+        from django.contrib.auth import logout as django_logout
+        django_logout(request)
+        return Response({'message': 'Logout successful.'}, status=status.HTTP_200_OK)
     """
     Authentication endpoints for registration, login, logout, and verification
     """
@@ -83,76 +188,108 @@ class AuthViewSet(viewsets.ViewSet):
         """
         serializer = UserRegistrationSerializer(data=request.data)
         if serializer.is_valid():
-            # Create user (inactive until email verified)
-            user = serializer.save(is_active=False, role='client')
-            
-            # Generate and store verification code
-            verification_code = self.generate_verification_code()
-            cache_key = f"email_verification_{user.email}"
-            cache.set(cache_key, verification_code, timeout=600)  # 10 minutes
-            
-            # Try to send verification email (non-blocking)
-            email_sent = self.send_verification_email(user.email, verification_code, 'email_verification')
-            
-            # Return success response regardless of email status
-            response_data = {
-                'message': 'Registration successful. Please check your email for verification code.',
-                'user_id': str(user.id),
-                'email': user.email
-            }
-            
-            # Add development info if email not configured
-            if not email_sent or not hasattr(settings, 'EMAIL_HOST') or not settings.EMAIL_HOST:
-                response_data['development_note'] = f'Email not configured. Verification code: {verification_code}'
-            
-            return Response(response_data, status=status.HTTP_201_CREATED)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                # Create user (inactive until email verified)
+                user = serializer.save(is_active=False, role='client')
 
-    @action(detail=False, methods=['post'])
+                # Generate and store verification code
+                verification_code = self.generate_verification_code()
+                cache_key = f"email_verification_{user.email}"
+                cache.set(cache_key, verification_code, timeout=600)  # 10 minutes
+
+                # Try to send verification email (non-blocking)
+                email_sent = self.send_verification_email(user.email, verification_code, 'email_verification')
+
+                # Issue JWT tokens for the new user (inactive, but needed for verification)
+                from rest_framework_simplejwt.tokens import RefreshToken
+                refresh = RefreshToken.for_user(user)
+                access = str(refresh.access_token)
+
+                response_data = {
+                    'message': 'Registration successful. Please check your email for verification code.',
+                    'user_id': str(user.id),
+                    'email': user.email,
+                    'access': access,
+                    'refresh': str(refresh)
+                }
+
+                # Add development info if email not configured
+                if not email_sent or not hasattr(settings, 'EMAIL_HOST') or not settings.EMAIL_HOST:
+                    response_data['development_note'] = f'Email not configured. Verification code: {verification_code}'
+
+                print(f"[REGISTER] Registration successful for {user.email}. Email sent: {email_sent}")
+                return Response(response_data, status=status.HTTP_201_CREATED)
+            except Exception as e:
+                print(f"[REGISTER ERROR] Exception during registration: {e}")
+                return Response({
+                    'message': 'Registration failed due to server error',
+                    'errors': str(e)
+                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Log registration errors for debugging
+        print(f"[REGISTER ERROR] Registration failed for {request.data.get('email')}: {serializer.errors}")
+        return Response({
+            'message': 'Registration failed',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
     def verify_email(self, request):
         """
-        Verify email with code
+        Verify email with code. Requires Authorization header with access token.
         POST /api/v1/accounts/auth/verify-email/
         """
         serializer = EmailVerificationConfirmSerializer(data=request.data)
         if serializer.is_valid():
             email = serializer.validated_data['email']
             code = serializer.validated_data['code']
-            
+
+            # Check that the user is authenticated and matches the email
+            if not request.user.is_authenticated or str(request.user.email).lower() != str(email).lower():
+                return Response({'error': 'Access token required and must match email.'}, status=status.HTTP_403_FORBIDDEN)
+
             # Check verification code
             cache_key = f"email_verification_{email}"
             stored_code = cache.get(cache_key)
-            
+            import time
             if stored_code and stored_code == code:
                 try:
                     user = User.objects.get(email=email)
                     user.is_active = True
                     user.save()
-                    
-                    # Clear verification code
+                    # Clear verification code (single-use)
                     cache.delete(cache_key)
-                    
-                    # Generate JWT tokens
+                    # Issue new tokens
+                    from rest_framework_simplejwt.tokens import RefreshToken
                     refresh = RefreshToken.for_user(user)
-                    
+                    access = str(refresh.access_token)
+                    print(f"[VERIFY] Email verified for {email} at {int(time.time())}")
                     return Response({
                         'message': 'Email verified successfully.',
-                        'access': str(refresh.access_token),
+                        'user': UserBasicSerializer(user).data,
+                        'access': access,
                         'refresh': str(refresh),
-                        'user': UserBasicSerializer(user).data
+                        'errors': {},
                     }, status=status.HTTP_200_OK)
-                
                 except User.DoesNotExist:
                     return Response({
-                        'error': 'User not found.'
+                        'message': 'User not found.',
+                        'errors': {'user': ['User not found.']}
                     }, status=status.HTTP_404_NOT_FOUND)
             else:
+                # Code expiry feedback
+                expires_in = cache.ttl(cache_key) if hasattr(cache, 'ttl') else None
+                print(f"[VERIFY] Invalid/expired code for {email} at {int(time.time())}")
                 return Response({
-                    'error': 'Invalid or expired verification code.'
+                    'message': 'Invalid or expired verification code.',
+                    'resend_prompt': True,
+                    'expires_in': expires_in,
+                    'errors': {'code': ['Invalid or expired verification code.']}
                 }, status=status.HTTP_400_BAD_REQUEST)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'message': 'Verification failed',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['post'])
     def resend_verification(self, request):
@@ -160,118 +297,62 @@ class AuthViewSet(viewsets.ViewSet):
         Resend email verification code
         POST /api/v1/accounts/auth/resend-verification/
         """
+        import time
         serializer = EmailVerificationSerializer(data=request.data)
         if serializer.is_valid():
             email = serializer.validated_data['email']
-            
+            # Rate limiting: allow resend only once every 30 seconds
+            rate_key = f"resend_rate_{email}"
+            last_sent = cache.get(rate_key)
+            now = int(time.time())
+            if last_sent and now - last_sent < 30:
+                return Response({
+                    'message': 'Please wait before resending verification code.',
+                    'errors': {'rate_limit': ['Resend allowed once every 30 seconds.']}
+                }, status=status.HTTP_429_TOO_MANY_REQUESTS)
             try:
                 user = User.objects.get(email=email)
                 if user.is_active:
                     return Response({
-                        'message': 'Email is already verified.'
+                        'message': 'Email is already verified.',
+                        'errors': {},
                     }, status=status.HTTP_200_OK)
-                
+                # Invalidate old code
+                cache_key = f"email_verification_{email}"
+                cache.delete(cache_key)
                 # Generate new verification code
                 verification_code = self.generate_verification_code()
-                cache_key = f"email_verification_{email}"
                 cache.set(cache_key, verification_code, timeout=600)  # 10 minutes
-                
+                # Log resend event
+                print(f"[RESEND] Verification code resent for {email} at {now}")
                 # Try to send verification email (non-blocking)
                 email_sent = self.send_verification_email(email, verification_code, 'email_verification')
-                
-                response_data = {'message': 'Verification code sent successfully.'}
-                
+                # Mark rate limit
+                cache.set(rate_key, now, timeout=30)
+                response_data = {
+                    'message': 'Verification code sent successfully.',
+                    'email_delivery': 'sent' if email_sent else 'logged',
+                    'errors': {},
+                }
                 # Add development info if email not configured
                 if not email_sent or not hasattr(settings, 'EMAIL_HOST') or not settings.EMAIL_HOST:
                     response_data['development_note'] = f'Email not configured. Verification code: {verification_code}'
-                
                 return Response(response_data, status=status.HTTP_200_OK)
-            
             except User.DoesNotExist:
                 return Response({
-                    'error': 'User not found.'
+                    'message': 'User not found.',
+                    'errors': {'user': ['User not found.']}
                 }, status=status.HTTP_404_NOT_FOUND)
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'message': 'Resend failed',
+            'errors': serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=False, methods=['post'])
-    def login(self, request):
-        """
-        Login user and return JWT tokens
-        POST /api/v1/accounts/auth/login/
-        """
-        email = request.data.get('email')
-        password = request.data.get('password')
-        
-        if not email or not password:
-            return Response({
-                'error': 'Email and password are required.'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        try:
-            user = User.objects.get(email=email)
-            if not user.is_active:
-                return Response({
-                    'error': 'Account is not activated. Please verify your email.'
-                }, status=status.HTTP_400_BAD_REQUEST)
-        except User.DoesNotExist:
-            return Response({
-                'error': 'Invalid credentials.'
-            }, status=status.HTTP_401_UNAUTHORIZED)
-        
-        user = authenticate(request, email=email, password=password)
-        if user:
-            refresh = RefreshToken.for_user(user)
-            return Response({
-                'access': str(refresh.access_token),
-                'refresh': str(refresh),
-                'user': UserBasicSerializer(user).data
-            }, status=status.HTTP_200_OK)
-        else:
-            return Response({
-                'error': 'Invalid credentials.'
-            }, status=status.HTTP_401_UNAUTHORIZED)
+    # Remove custom login, use dj-rest-auth's built-in login endpoint
 
-    @action(detail=False, methods=['post'])
-    def logout(self, request):
-        """
-        Logout user by blacklisting refresh token
-        POST /api/v1/accounts/auth/logout/
-        """
-        try:
-            refresh_token = request.data.get('refresh')
-            if refresh_token:
-                token = RefreshToken(refresh_token)
-                token.blacklist()
-            return Response({
-                'message': 'Logout successful.'
-            }, status=status.HTTP_200_OK)
-        except TokenError:
-            return Response({
-                'error': 'Invalid token.'
-            }, status=status.HTTP_400_BAD_REQUEST)
+    # Remove custom logout, use dj-rest-auth's built-in logout endpoint
 
-    @action(detail=False, methods=['post'])
-    def refresh(self, request):
-        """
-        Refresh JWT access token
-        POST /api/v1/accounts/auth/refresh/
-        """
-        try:
-            refresh_token = request.data.get('refresh')
-            if refresh_token:
-                refresh = RefreshToken(refresh_token)
-                return Response({
-                    'access': str(refresh.access_token)
-                }, status=status.HTTP_200_OK)
-            else:
-                return Response({
-                    'error': 'Refresh token is required.'
-                }, status=status.HTTP_400_BAD_REQUEST)
-        except TokenError:
-            return Response({
-                'error': 'Invalid or expired refresh token.'
-            }, status=status.HTTP_401_UNAUTHORIZED)
+    # Remove custom refresh, use dj-rest-auth's built-in token refresh endpoint if needed
 
     @action(detail=False, methods=['post'])
     def forgot_password(self, request):
@@ -349,6 +430,83 @@ class AuthViewSet(viewsets.ViewSet):
                 }, status=status.HTTP_400_BAD_REQUEST)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class GoogleAuthView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        import logging, requests
+        logger = logging.getLogger('django')
+        access_token = request.data.get('access_token')
+        if not access_token:
+            return Response({'error': 'Missing access token'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Fetch Google user info using the access token
+        google_userinfo_url = 'https://www.googleapis.com/oauth2/v3/userinfo'
+        headers = {'Authorization': f'Bearer {access_token}'}
+        resp = requests.get(google_userinfo_url, headers=headers)
+        logger.info(f"GoogleAuthView: Google userinfo response: {resp.status_code} {resp.text}")
+        if resp.status_code != 200:
+            return Response({'error': 'Invalid Google access token'}, status=status.HTTP_400_BAD_REQUEST)
+        userinfo = resp.json()
+
+        # Validate client ID (aud field)
+        # Fetch token info to check aud
+        tokeninfo_url = 'https://oauth2.googleapis.com/tokeninfo'
+        tokeninfo_resp = requests.get(tokeninfo_url, params={'access_token': access_token})
+        logger.info(f"GoogleAuthView: Google tokeninfo response: {tokeninfo_resp.status_code} {tokeninfo_resp.text}")
+        if tokeninfo_resp.status_code != 200:
+            return Response({'error': 'Invalid Google token'}, status=status.HTTP_400_BAD_REQUEST)
+        tokeninfo = tokeninfo_resp.json()
+        from django.conf import settings
+        expected_aud = str(settings.SOCIAL_AUTH_GOOGLE_OAUTH2_KEY).strip()
+        received_aud = str(tokeninfo.get('aud')).strip()
+        logger.info(f"GoogleAuthView: Comparing aud values. Expected: '{expected_aud}' (type {type(expected_aud)}), Received: '{received_aud}' (type {type(received_aud)})")
+        if received_aud != expected_aud:
+            logger.error(f"GoogleAuthView: Token aud mismatch. Expected {expected_aud}, got {received_aud}")
+            return Response({'error': 'Google token client ID mismatch'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Get user details
+        email = userinfo.get('email')
+        first_name = userinfo.get('given_name', '')
+        last_name = userinfo.get('family_name', '')
+        picture = userinfo.get('picture', '')
+
+        # Create or get user
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        user, created = User.objects.get_or_create(email=email, defaults={
+            'first_name': first_name,
+            'last_name': last_name,
+            'is_active': True,
+        })
+        if created:
+            logger.info(f"GoogleAuthView: Created new user for email {email}")
+        else:
+            logger.info(f"GoogleAuthView: Found existing user for email {email}")
+
+        # Optionally update user details
+        updated = False
+        if user.first_name != first_name:
+            user.first_name = first_name
+            updated = True
+        if user.last_name != last_name:
+            user.last_name = last_name
+            updated = True
+        if updated:
+            user.save()
+
+        # Generate JWT token using SimpleJWT
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = RefreshToken.for_user(user)
+        logger.info(f"GoogleAuthView: JWT tokens generated: access={str(refresh.access_token)}, refresh={str(refresh)}")
+        return Response({
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+            'user': UserBasicSerializer(user).data,
+            'message': 'Google login successful.'
+        }, status=status.HTTP_200_OK)
 
 
 class UserViewSet(viewsets.ModelViewSet):

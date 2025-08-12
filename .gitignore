@@ -23,6 +23,9 @@ var/
 .installed.cfg
 *.egg
 
+# client ID Oauth 2.0 
+# 67030173001-9kil2f9td6u41ef28jvn4pbm57uo7s0s.apps.googleusercontent.com
+
 # Django stuff:
 *.log
 local_settings.py         # if you keep per‑machine settings here

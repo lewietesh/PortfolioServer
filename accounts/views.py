@@ -41,6 +41,7 @@ class AuthViewSet(viewsets.ViewSet):
         Allow user to skip email verification (for development or fallback).
         POST /api/v1/accounts/auth/verify-later/
         Requires Authorization header with access token from signup.
+        Returns new JWT tokens and user data.
         """
         user = request.user
         if not user or not user.is_authenticated:
@@ -52,7 +53,19 @@ class AuthViewSet(viewsets.ViewSet):
         cache_key = f"email_verification_{user.email}"
         cache.delete(cache_key)
         print(f"[VERIFY LATER] User {user.email} skipped verification.")
-        return Response({'message': 'Verification skipped. You can verify your email later from your profile.'}, status=status.HTTP_200_OK)
+
+        # Issue JWT tokens
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = RefreshToken.for_user(user)
+        access = str(refresh.access_token)
+        user_data = UserBasicSerializer(user).data
+        return Response({
+            'success': True,
+            'access': access,
+            'refresh': str(refresh),
+            'user': user_data,
+            'message': 'Verification skipped. You can verify your email later from your profile.'
+        }, status=status.HTTP_200_OK)
     @action(detail=False, methods=['post'])
     def login(self, request):
         """

@@ -2,7 +2,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
-from .views import GoogleAuthView
+from .google_auth import GoogleAuthView
 
 # Create router and register viewsets
 router = DefaultRouter()

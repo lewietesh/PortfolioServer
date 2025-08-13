@@ -299,7 +299,7 @@ AUTHENTICATION_BACKENDS = (
 
 
 # I need to fetch these two from .env  using process env, can you implement that? 
-SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = env("NEXT_PUBLIC_GOOGLE_CLIENT_ID")
+SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = env("GOOGLE_CLIENT_ID")
 SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = env("GOOGLE_CLIENT_SECRET")
 
 SOCIAL_AUTH_GOOGLE_OAUTH2_SCOPE = ['email', 'profile']

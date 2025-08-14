@@ -13,7 +13,7 @@ class UserBasicSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = User
-        fields = ['id', 'email', 'first_name', 'last_name', 'full_name', 'role']
+        fields = ['id', 'email', 'first_name', 'last_name', 'full_name', 'role', 'profile_img']
 
 
 class UserDetailSerializer(serializers.ModelSerializer):
@@ -25,10 +25,10 @@ class UserDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'email', 'first_name', 'last_name', 'full_name', 
-            'phone', 'role', 'is_active', 'date_joined', 'date_updated'
+            'id', 'email', 'first_name', 'last_name', 'full_name',
+            'phone', 'role', 'is_active', 'date_joined', 'date_updated', 'profile_img', 'is_verified'
         ]
-        read_only_fields = ['id', 'date_joined', 'date_updated', 'role']
+        read_only_fields = ['id', 'date_joined', 'date_updated', 'role', 'email', 'is_verified']
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):

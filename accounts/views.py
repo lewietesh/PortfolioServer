@@ -1,3 +1,21 @@
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
+# --- Profile management for dashboard ---
+class UserProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Get current user's profile"""
+        serializer = UserDetailSerializer(request.user)
+        return Response(serializer.data)
+
+    def patch(self, request):
+        """Update current user's profile (partial update)"""
+        serializer = UserDetailSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=400)
 # accounts/views.py
 import random
 import string
@@ -464,7 +482,6 @@ class GoogleAuthView(APIView):
             return Response({'error': 'Invalid Google access token'}, status=status.HTTP_400_BAD_REQUEST)
         userinfo = resp.json()
 
-        # Validate client ID (aud field)
         # Fetch token info to check aud
         tokeninfo_url = 'https://oauth2.googleapis.com/tokeninfo'
         tokeninfo_resp = requests.get(tokeninfo_url, params={'access_token': access_token})

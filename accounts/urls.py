@@ -3,6 +3,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
 from .google_auth import GoogleAuthView
+from .views import UserProfileView
 
 # Create router and register viewsets
 router = DefaultRouter()
@@ -17,6 +18,8 @@ urlpatterns = [
     path('', include(router.urls)),
     # Google OAuth endpoint
     path('auth/social/google/', GoogleAuthView.as_view()),
+    # User profile endpoint for dashboard
+    path('users/me/', UserProfileView.as_view(), name='user-profile'),
 ]
 
 # Complete URL mapping for reference:

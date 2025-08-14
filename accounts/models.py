@@ -63,6 +63,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     # Personal information
     first_name = models.CharField(max_length=100, blank=True)
     last_name = models.CharField(max_length=100, blank=True)
+    profile_img = models.URLField(blank=True, null=True, help_text="Profile image URL (Google or uploaded)")
     
     # Contact information
     phone_regex = RegexValidator(
@@ -82,7 +83,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         default='client'
     )
     
-    # Django required fields
+    # Verification and permissions
+    is_verified = models.BooleanField(default=False, help_text="Has the user's email been verified?")
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     
